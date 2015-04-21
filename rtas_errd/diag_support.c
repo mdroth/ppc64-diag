@@ -230,27 +230,23 @@ get_dt_status(char *dev)
 	char loc_file[80];
 	char target[80];
 	char *ptr;
-	char command[]="/usr/bin/find /proc/device-tree -name status -print > /tmp/get_dt_files";
+	char command[]="/usr/bin/find /proc/device-tree -name status -print";
 
-	if (system(command) != 0) {
+	fp1 = popen(command,"r");
+	
+	if (!fp1) {
 		fprintf(stderr, "get_dt_status find command failed\n");
 		return NULL;
 	}
 
-	/* results of the find command */
-	fp1 = fopen("/tmp/get_dt_files", "r");
-	if (fp1 == 0) {
-		fprintf(stderr, "open failed on /tmp/get_dt_files\n");
-		return NULL;
-	}
-
 	while (fscanf (fp1, "%s", loc_file) != EOF) {
-		dbg("read from /tmp/get_dt_files, \"%s\"", loc_file);
+		dbg("read from find, \"%s\"", loc_file);
 
 		/* read the status in case this is the one */
 		fp2 = fopen(loc_file, "r");
 		if (fp2 == 0) {
 			fprintf(stderr, "open failed on %s\n", loc_file);
+			pclose(fp1);
 			return NULL;
 		}
 		if (fscanf(fp2, "%s", target_status)) {
@@ -259,6 +255,7 @@ get_dt_status(char *dev)
 		} 
 		else {
 			fprintf(stderr, "read failed on %s\n", loc_file);
+			pclose(fp1);
 			return NULL;
 		}
 
@@ -270,6 +267,7 @@ get_dt_status(char *dev)
 		fp2 = fopen(loc_file, "r");
 		if (fp2 == 0) {
 			fprintf(stderr, "open failed on %s\n", loc_file);
+			pclose(fp1);
 			return NULL;
 		}
 
@@ -278,6 +276,8 @@ get_dt_status(char *dev)
 			    target, loc_file);
 			if (strcmp(dev, target) == 0) {
 				dbg("status = \"%s\"", target_status);
+        pclose (fp1);
+			  fclose (fp2);
 				return target_status; 
 			} 
 
@@ -285,11 +285,12 @@ get_dt_status(char *dev)
 		} 
 		else {
 			fprintf(stderr, "read failed on %s\n", loc_file);
+			pclose(fp1);
 			return NULL;
 		}
 	}
 
-	fclose(fp1);
+	pclose(fp1);
 	fprintf(stderr, "error: status NOT FOUND\n");
 	return NULL;
 }
