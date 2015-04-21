@@ -70,34 +70,35 @@ ln -sfv /usr/sbin/usysattn $RPM_BUILD_ROOT/usr/sbin/usysfault
 # Post-install script --------------------------------------------------
 # We will install both opal_errd and rtas_errd daemon and during boottime
 # daemon will fail gracefully if its not relevant to the running platform
-/etc/ppc64-diag/ppc64_diag_setup --register >/dev/null 2>&1
-/etc/ppc64-diag/lp_diag_setup --register >/dev/null 2>&1
+%{_libexecdir}/%{name}/lp_diag_setup --register >/dev/null
+%{_libexecdir}/%{name}/ppc64_diag_setup --register >/dev/null
+systemctl daemon-reload >/dev/null 2>&1 || :
 if [ "$1" = "1" ]; then # first install
-    systemctl -q enable opal_errd.service >/dev/null
-    systemctl -q enable rtas_errd.service >/dev/null
-    systemctl start opal_errd.service >/dev/null
-    systemctl start rtas_errd.service >/dev/null
+    systemctl -q enable opal_errd.service >/dev/null 2>&1 || :
+    systemctl -q enable rtas_errd.service >/dev/null 2>&1 || :
+    systemctl start opal_errd.service >/dev/null 2>&1 || :
+    systemctl start rtas_errd.service >/dev/null 2>&1 || :
 elif [ "$1" = "2" ]; then # upgrade
-    systemctl restart opal_errd.service >/dev/null
-    systemctl restart rtas_errd.service >/dev/null
+    systemctl try-restart opal_errd.service >/dev/null 2>&1 || :
+    systemctl try-restart rtas_errd.service >/dev/null 2>&1 || :
 fi
 
 %preun
 # Pre-uninstall script -------------------------------------------------
 if [ "$1" = "0" ]; then # last uninstall
-    systemctl stop opal_errd.service >/dev/null
-    systemctl stop rtas_errd.service >/dev/null
-    systemctl -q disable opal_errd.service
-    systemctl -q disable rtas_errd.service
-    /etc/ppc64-diag/ppc64_diag_setup --unregister >/dev/null
-    /etc/ppc64-diag/lp_diag_setup --unregister >/dev/null
+    systemctl stop opal_errd.service >/dev/null 2>&1 || :
+    systemctl stop rtas_errd.service >/dev/null 2>&1 || :
+    systemctl -q disable opal_errd.service >/dev/null 2>&1 || :
+    systemctl -q disable rtas_errd.service >/dev/null 2>&1 || :
+    %{_libexecdir}/%{name}/ppc64_diag_setup --unregister >/dev/null
+    %{_libexecdir}/%{name}/lp_diag_setup --unregister >/dev/null
 fi
 
 %triggerin -- librtas
 # trigger on librtas upgrades ------------------------------------------
 if [ "$2" = "2" ]; then
-    systemctl restart opal_errd.service >/dev/null
-    systemctl restart rtas_errd.service >/dev/null
+    systemctl try-restart opal_errd.service >/dev/null 2>&1 || :
+    systemctl try-restart rtas_errd.service >/dev/null 2>&1 || :
 fi
 
 %changelog
