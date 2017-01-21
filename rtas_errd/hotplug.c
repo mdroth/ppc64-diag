@@ -24,12 +24,58 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <sys/wait.h>
+#include <stdbool.h>
 
 #include <librtas.h>
 #include "rtas_errd.h"
 
 #define DRMGR_PROGRAM           "/usr/sbin/drmgr"
 #define DRMGR_PROGRAM_NOPATH    "drmgr"
+#define OFDT_OVEC5		"/proc/device-tree/chosen/ibm,architecture-vec-5"
+#define OFDT_OVEC5_HP_MULTISLOT	54 /* vector byte: 6, bit: 6 */
+
+static bool vec5_option_bit_test(uint32_t bitnr)
+{
+	FILE *f;
+	uint8_t vec_byte, vec_len;
+	bool ret = false;
+
+	f = fopen(OFDT_OVEC5, "r");
+	if (!f)
+		goto out_error;
+
+	if (fread(&vec_len, 1, 1, f) != 1)
+		goto out_error;
+
+	/* bit not present */
+	if (vec_len + 1 < bitnr / 8)
+		goto out;
+
+	if (fseek(f, bitnr / 8, SEEK_SET) != 0 ||
+	    ftell(f) != bitnr / 8) {
+		goto out_error;
+	}
+
+	if (fread(&vec_byte, 1, 1, f) != 1)
+		goto out_error;
+
+	/* vec5 bit-vector bit offsets are relative to the MSB */
+	ret = !!(vec_byte & (0x80 >> (bitnr & 0x07))) ? true : false;
+	goto out;
+
+out_error:
+	log_msg(NULL, "could not check option vector, error reading %s",
+		OFDT_OVEC5);
+out:
+	if (f)
+		fclose(f);
+	return ret;
+}
+
+static bool multislot_hotplug_supported(void)
+{
+	return vec5_option_bit_test(OFDT_OVEC5_HP_MULTISLOT);
+}
 
 void handle_hotplug_event(struct event *re)
 {
@@ -40,7 +86,7 @@ void handle_hotplug_event(struct event *re)
         char drc_index[11];
 	char count[4];
         char *drmgr_args[] = { DRMGR_PROGRAM_NOPATH, "-c", NULL, NULL, NULL,
-                        NULL, NULL, "-d4", "-V", NULL};
+                        NULL, NULL, "-d4", NULL, NULL};
 
         /* Retrieve Hotplug section */
         if (rtas_hdr->version >= 6) {
@@ -53,6 +99,12 @@ void handle_hotplug_event(struct event *re)
                         case RTAS_HP_TYPE_PCI:
                                 drmgr_args[2] = "pci";
                                 drmgr_args[6] = "-n";
+				/* if guest doesn't support multiple hp slots
+				 * per PHB, we need to fall back to
+				 * virtio/QEMU-specific workaround.
+				 */
+				if (!multislot_hotplug_supported())
+					drmgr_args[8] = "-V";
                                 break;
 			case RTAS_HP_TYPE_CPU:
 				drmgr_args[2] = "cpu";
